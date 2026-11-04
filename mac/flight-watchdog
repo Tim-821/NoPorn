@@ -1,0 +1,104 @@
+#!/bin/bash
+# Flight 自愈系统 —— 以 root 运行
+# 每 30 秒检查：策略文件是否被改、Flight 是否还活着。被改就还原，死了就重启。
+#
+#   flight-watchdog --once     跑一次检查
+#   flight-watchdog --accept   把当前 policy.yaml 设为新基准（改规则后用）
+#   flight-watchdog --status   看当前状态
+
+set -uo pipefail
+
+POLICY="/Library/Application Support/mihomo/policy.yaml"
+DB="/var/db/flight"
+BASE="$DB/policy.sha256"
+BAK="$DB/policy.yaml.bak"
+LOG="$DB/watchdog.log"
+UID_TARGET=501
+SERVICE="io.github.clash-verge-rev.clash-verge-rev.service"
+
+mkdir -p "$DB"
+chmod 700 "$DB"
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; }
+
+notify() {
+  local msg="$1"
+  /bin/launchctl asuser $UID_TARGET /usr/bin/osascript \
+    -e "display notification \"$msg\" with title \"Flight 自愈\"" >/dev/null 2>&1
+}
+
+sha() { /usr/bin/shasum -a 256 "$1" 2>/dev/null | /usr/bin/awk '{print $1}'; }
+
+# ---------- 设基准 ----------
+if [[ "${1:-}" == "--accept" ]]; then
+  if [[ ! -f "$POLICY" ]]; then echo "policy.yaml 不存在"; exit 1; fi
+  cp -f "$POLICY" "$BAK"
+  chmod 600 "$BAK"
+  sha "$POLICY" > "$BASE"
+  chmod 600 "$BASE"
+  log "ACCEPT new baseline: $(cat "$BASE")"
+  echo "已把当前策略设为基准。"
+  exit 0
+fi
+
+# ---------- 状态 ----------
+if [[ "${1:-}" == "--status" ]]; then
+  echo "基准哈希: $(cat "$BASE" 2>/dev/null || echo 未设定)"
+  echo "当前哈希: $(sha "$POLICY")"
+  echo "Flight 进程: $(pgrep -f 'verge-mihomo' >/dev/null && echo 运行中 || echo 未运行)"
+  echo "最近事件:"
+  tail -8 "$LOG" 2>/dev/null | sed 's/^/  /'
+  exit 0
+fi
+
+# ---------- 一次检查 ----------
+check_policy() {
+  [[ -f "$BASE" ]] || return 0          # 还没设基准，跳过
+  [[ -f "$POLICY" ]] || {
+    # 文件被整个删了
+    if [[ -f "$BAK" ]]; then
+      cp -f "$BAK" "$POLICY"
+      chown root:wheel "$POLICY"; chmod 644 "$POLICY"
+      log "RESTORE: policy.yaml 被删除，已从备份恢复"
+      notify "策略文件被删除，已自动恢复"
+    fi
+    return 0
+  }
+  local want now
+  want=$(cat "$BASE")
+  now=$(sha "$POLICY")
+  if [[ "$want" != "$now" ]]; then
+    if [[ -f "$BAK" ]]; then
+      cp -f "$BAK" "$POLICY"
+      chown root:wheel "$POLICY"; chmod 644 "$POLICY"
+      log "RESTORE: 哈希不符 want=$want got=$now，已还原"
+      notify "拦截策略被改动，已自动还原"
+      # 重启内核让策略立即生效
+      /bin/launchctl kickstart -k "system/$SERVICE" >/dev/null 2>&1
+    else
+      log "WARN: 哈希不符但没有备份可还原"
+      notify "拦截策略被改动，且无备份可还原"
+    fi
+  fi
+}
+
+check_flight() {
+  if ! pgrep -f "verge-mihomo" >/dev/null 2>&1; then
+    log "RESTART: 内核进程不在，尝试拉起"
+    /bin/launchctl kickstart -k "system/$SERVICE" >/dev/null 2>&1
+    sleep 2
+    if pgrep -f "verge-mihomo" >/dev/null 2>&1; then
+      log "RESTART OK"
+      notify "内核已自动重启"
+    else
+      log "RESTART FAILED，尝试打开 Flight.app"
+      /bin/launchctl asuser $UID_TARGET /usr/bin/open -a Flight >/dev/null 2>&1
+      notify "内核异常，已尝试重新打开 Flight"
+    fi
+  fi
+}
+
+check_policy
+check_flight
+
+[[ "${1:-}" == "--once" ]] && exit 0

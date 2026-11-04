@@ -1,0 +1,74 @@
+#!/bin/bash
+# Flight 自愈系统 v2（副守护 / 哨兵）—— 每 45 秒
+# 唯一职责：确保"主守护"还活着。主守护被删/被改/被卸载，它负责装回来。
+# 与主守护互不依赖，任何一方单独存活都能修复对方。
+
+set -uo pipefail
+
+POLICY="/Library/Application Support/mihomo/policy.yaml"
+DB="/var/db/flight"
+VAULT="/private/var/.fv"
+LOG="$DB/sentinel.log"
+UID_TARGET=501
+SERVICE="io.github.clash-verge-rev.clash-verge-rev.service"
+
+mkdir -p "$DB" 2>/dev/null; chmod 700 "$DB" 2>/dev/null
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [st] $*" >> "$LOG"; }
+notify() {
+  /bin/launchctl asuser $UID_TARGET /usr/bin/osascript \
+    -e "display notification \"$1\" with title \"Flight 自愈\"" >/dev/null 2>&1
+}
+sha() { /usr/bin/shasum -a 256 "$1" 2>/dev/null | /usr/bin/awk '{print $1}'; }
+
+fix_watchdog() {
+  local did=0
+  if [[ ! -f /usr/local/bin/flight-watchdog ]] || \
+     [[ "$(sha /usr/local/bin/flight-watchdog)" != "$(cat "$VAULT/watchdog.sha" 2>/dev/null)" ]]; then
+    /bin/cp -f "$VAULT/watchdog.bin" /usr/local/bin/flight-watchdog 2>/dev/null
+    /usr/sbin/chown root:wheel /usr/local/bin/flight-watchdog 2>/dev/null
+    /bin/chmod 755 /usr/local/bin/flight-watchdog 2>/dev/null
+    did=1; log "RESTORE 主守护二进制已恢复"
+  fi
+  if [[ ! -f /Library/LaunchDaemons/com.flight.watchdog.plist ]] || \
+     [[ "$(sha /Library/LaunchDaemons/com.flight.watchdog.plist)" != "$(cat "$VAULT/watchdog.plist.sha" 2>/dev/null)" ]]; then
+    /bin/cp -f "$VAULT/watchdog.plist" /Library/LaunchDaemons/com.flight.watchdog.plist 2>/dev/null
+    /usr/sbin/chown root:wheel /Library/LaunchDaemons/com.flight.watchdog.plist 2>/dev/null
+    /bin/chmod 644 /Library/LaunchDaemons/com.flight.watchdog.plist 2>/dev/null
+    /bin/launchctl bootout system/com.flight.watchdog 2>/dev/null
+    /bin/launchctl bootstrap system /Library/LaunchDaemons/com.flight.watchdog.plist 2>/dev/null
+    did=1; log "RESTORE 主守护 plist 已恢复并加载"
+  fi
+  # plist 在但没在跑（被 bootout 了）
+  if [[ -f /Library/LaunchDaemons/com.flight.watchdog.plist ]] && \
+     ! /bin/launchctl print system/com.flight.watchdog >/dev/null 2>&1; then
+    /bin/launchctl bootstrap system /Library/LaunchDaemons/com.flight.watchdog.plist 2>/dev/null
+    did=1; log "RESTORE 主守护未加载，已重新加载"
+  fi
+  [[ $did -eq 1 ]] && notify "主守护被改动，已自动修复"
+}
+
+fix_policy() {
+  [[ -f "$DB/policy.sha256" ]] || return 0
+  local want now
+  want=$(cat "$DB/policy.sha256")
+  if [[ ! -f "$POLICY" ]]; then
+    /bin/cp -f "$VAULT/policy.bak" "$POLICY" 2>/dev/null
+    /usr/sbin/chown root:wheel "$POLICY" 2>/dev/null; /bin/chmod 644 "$POLICY" 2>/dev/null
+    log "RESTORE 策略文件已恢复"; notify "拦截策略被删，已自动恢复"
+    /bin/launchctl kickstart -k "system/$SERVICE" >/dev/null 2>&1
+    return 0
+  fi
+  now=$(sha "$POLICY")
+  if [[ "$want" != "$now" ]]; then
+    /bin/cp -f "$VAULT/policy.bak" "$POLICY" 2>/dev/null
+    /usr/sbin/chown root:wheel "$POLICY" 2>/dev/null; /bin/chmod 644 "$POLICY" 2>/dev/null
+    log "RESTORE 策略被改，已还原"; notify "拦截策略被改动，已还原"
+    /bin/launchctl kickstart -k "system/$SERVICE" >/dev/null 2>&1
+  fi
+}
+
+fix_watchdog
+fix_policy
+
+exit 0

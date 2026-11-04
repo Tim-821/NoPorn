@@ -1,0 +1,11 @@
+*.pem
+*.key
+*.p12
+*.jks
+local.properties
+build/
+.gradle/
+__pycache__/
+.DS_Store
+*.apk
+*.log

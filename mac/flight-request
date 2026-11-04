@@ -1,0 +1,165 @@
+#!/usr/bin/python3
+"""Flight 授权请求端 —— 以普通用户身份运行。
+
+用法：
+    flight-request <file.pkg>   申请安装某个 .pkg
+    flight-request --pick       弹窗选择 pkg
+    flight-request --repair     系统被打崩时，申请重建防线
+
+设计：请求码走剪贴板（不用手打），响应码也走剪贴板。
+"""
+import base64
+import hashlib
+import json
+import os
+import secrets
+import subprocess
+import sys
+import tempfile
+import time
+
+INSTALL = "/usr/local/bin/flight-install"
+
+
+def osa(script: str, timeout: int = 3600) -> str:
+    r = subprocess.run(["/usr/bin/osascript", "-e", script],
+                       capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip() or "用户取消")
+    return r.stdout.strip()
+
+
+def esc(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def dialog(text, title="Flight"):
+    try:
+        osa('display dialog "%s" with title "%s" buttons {"好"} default button 1 '
+            'with icon note' % (esc(text), title))
+    except Exception:
+        pass
+
+
+def confirm(text, title="Flight") -> bool:
+    try:
+        osa('display dialog "%s" with title "%s" buttons {"取消", "继续"} '
+            'default button 2 with icon note' % (esc(text), title))
+        return True
+    except Exception:
+        return False
+
+
+def clipboard_set(s: str):
+    subprocess.run(["/usr/bin/pbcopy"], input=s.encode(), check=False)
+
+
+def clipboard_get() -> str:
+    try:
+        return subprocess.run(["/usr/bin/pbpaste"], capture_output=True,
+                              text=True).stdout.strip()
+    except Exception:
+        return ""
+
+
+def run_root(req_path: str):
+    r = subprocess.run(["/usr/bin/sudo", "-n", INSTALL, req_path],
+                       capture_output=True, text=True)
+    return r
+
+
+def exchange(challenge: str, what: str) -> str:
+    """把请求码放剪贴板 -> 等朋友签名 -> 从剪贴板取回响应码"""
+    clipboard_set(challenge)
+    if not confirm(
+        "已复制请求码（%s）。\n\n"
+        "1. 粘贴发给朋友\n"
+        "2. 朋友用签名器生成响应码，回发给你\n"
+        "3. 复制（或长按）那段响应码\n"
+        "4. 回来点「继续」\n\n"
+        "（不要手打，容易错）" % what):
+        return ""
+    resp = "".join(clipboard_get().split())
+    if not resp:
+        dialog("剪贴板是空的。请先复制朋友发来的响应码，再试一次。")
+        return ""
+    return resp
+
+
+def do_install(pkg: str):
+    if not pkg.lower().endswith(".pkg"):
+        dialog("只支持 .pkg 文件。\n\n如果是 .dmg，先双击挂载，再把里面的 .pkg 拖进来。")
+        return 1
+    if not os.path.isfile(pkg):
+        dialog("找不到文件：\n%s" % pkg)
+        return 1
+
+    h = hashlib.sha256()
+    with open(pkg, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    pkg_hash = h.hexdigest()[:16]
+
+    challenge = "FLIGHT1|%d|%s|%s" % (int(time.time()), secrets.token_hex(12), pkg_hash)
+    resp = exchange(challenge, os.path.basename(pkg))
+    if not resp:
+        return 1
+
+    req = {"op": "install", "pkg": pkg, "challenge": challenge, "sig": resp}
+    fd, path = tempfile.mkstemp(prefix="flight-req-", suffix=".json", dir="/tmp")
+    os.chmod(path, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(req, f)
+
+    r = run_root(path)
+    if r.returncode == 0:
+        dialog("安装完成：\n%s" % os.path.basename(pkg))
+        return 0
+    err = (r.stderr or r.stdout or "未知错误").strip()
+    dialog("安装未完成：\n\n%s" % err[:400])
+    return r.returncode
+
+
+def do_repair():
+    challenge = "FLIGHT2|%d|%s|REPAIR" % (int(time.time()), secrets.token_hex(12))
+    resp = exchange(challenge, "修复系统")
+    if not resp:
+        return 1
+
+    req = {"op": "repair", "challenge": challenge, "sig": resp}
+    fd, path = tempfile.mkstemp(prefix="flight-req-", suffix=".json", dir="/tmp")
+    os.chmod(path, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(req, f)
+
+    r = run_root(path)
+    if r.returncode == 0:
+        dialog("修复完成。\n\nFlight 的拦截、守护、安装器都已重建。\n建议重启一次更干净。")
+        return 0
+    err = (r.stderr or r.stdout or "未知错误").strip()
+    dialog("修复失败：\n\n%s" % err[:400])
+    return r.returncode
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        dialog("用法：\n• 把 .pkg 拖到本图标上\n• 或运行 flight-request --repair")
+        return 1
+
+    if args[0] == "--repair":
+        return do_repair()
+
+    if args[0] == "--pick":
+        try:
+            p = osa('POSIX path of (choose file with prompt "选择要安装的 .pkg" '
+                    'of type {"pkg"})')
+        except Exception:
+            return 1
+        return do_install(p.strip())
+
+    return do_install(args[0])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
