@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bulldog Guard v2</string>
+    <string name="admin_desc">个人自律设备底层守护控制器（锁唯一VPN / 禁强停 / 锁AdGuard DNS）</string>
+    <string name="a11y_label">Bulldog 精准无障碍守护</string>
+    <string name="a11y_desc">仅保护 Bulldog、本守护与锁定版 FlClash 的系统设置与无障碍开关不被误关，不影响管理其他应用。</string>
+</resources>

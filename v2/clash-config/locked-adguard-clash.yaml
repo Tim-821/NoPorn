@@ -1,0 +1,146 @@
+# ==============================================================================
+# 锁定版 FlClash / Mihomo (Clash Meta) 配置模板
+# 核心特性：
+#   1. 国内域名(含夸克/微信/支付宝) -> 国内高速 DNS + DIRECT 直连（彻底修复夸克不可用）
+#   2. 海外及未知域名 -> 强制本地 AdGuard Family DoH（免费无30万上限，自带成人屏蔽+SafeSearch）
+#   3. 规则最顶层强制拦截 30万+ 成人/色情域名（流量发出到机场节点前即本地 REJECT）
+#   4. 关闭 fake-ip（使用 redir-host），避免与国内浏览器/夸克/HTTPDNS 冲突
+#   5. 机场订阅仅用于 proxy-providers 拉取节点，无法覆盖 DNS 和 Rules
+# ==============================================================================
+
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: warning
+ipv6: false
+
+# ------------------------------------------------------------------------------
+# 1. 本地 DNS 强制净化（核心防线）
+# ------------------------------------------------------------------------------
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  ipv6: false
+  # 使用 redir-host 而非 fake-ip，彻底解决夸克浏览器/国内App开VPN后断网问题
+  enhanced-mode: redir-host
+  respect-rules: false
+
+  # 引导解析器（仅用于解析 DoH 域名本身）
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+
+  # 默认主解析器：AdGuard Family（免费、无限流量、自动拦截色情+强开 SafeSearch）
+  nameserver:
+    - https://family.adguard-dns.com/dns-query
+    - tls://family.adguard-dns.com
+
+  # 代理节点域名解析器（仅用于连接机场服务器本身）
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+    - 223.5.5.5
+
+  # 分流解析策略：国内站点（含夸克、百度、微信、阿里、腾讯）走国内 DNS 直连，速度拉满
+  nameserver-policy:
+    "geosite:cn,private":
+      - https://dns.alidns.com/dns-query
+      - https://doh.pub/dns-query
+    "+.quark.cn":
+      - https://dns.alidns.com/dns-query
+    "+.uc.cn":
+      - https://dns.alidns.com/dns-query
+    "+.ucweb.com":
+      - https://dns.alidns.com/dns-query
+    "+.sm.cn":
+      - https://dns.alidns.com/dns-query
+
+  # 强制回退也只允许走 AdGuard Family，杜绝走普通 Google/Cloudflare DNS 漏网
+  fallback:
+    - https://family.adguard-dns.com/dns-query
+    - tls://family.adguard-dns.com
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    ipcidr:
+      - 240.0.0.0/4
+
+# ------------------------------------------------------------------------------
+# 2. 机场节点源（只拉取节点，绝不信任机场自带规则或 DNS）
+# 【施工时替换】把下面的 url 换成你的机场订阅链接（放到远端托管时由朋友/脚本维护）
+# ------------------------------------------------------------------------------
+proxy-providers:
+  MyAirport:
+    type: http
+    url: "https://REPLACE_WITH_YOUR_AIRPORT_SUBSCRIPTION_URL"
+    interval: 86400
+    path: ./proxies/airport.yaml
+    health-check:
+      enable: true
+      interval: 600
+      url: https://www.gstatic.com/generate_204
+
+proxy-groups:
+  - name: "PROXY"
+    type: select
+    use:
+      - MyAirport
+    exclude-filter: "剩余流量|距离下次重置|套餐到期|官网|到期|重置"
+    proxies:
+      - "AUTO"
+
+  - name: "AUTO"
+    type: url-test
+    use:
+      - MyAirport
+    exclude-filter: "剩余流量|距离下次重置|套餐到期|官网|到期|重置"
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+
+# ------------------------------------------------------------------------------
+# 3. 顶层成人拦截规则集（国内直连 HTTP 200，流量在发往机场 VPS 前即本地 REJECT）
+# ------------------------------------------------------------------------------
+rule-providers:
+  nsfw-oisd:
+    type: http
+    behavior: domain
+    format: text
+    url: "https://nsfw.oisd.nl/domainswild2"
+    path: ./ruleset/nsfw-oisd.txt
+    interval: 86400
+
+# ------------------------------------------------------------------------------
+# 4. 路由规则（严格自上而下匹配，顶层防线不可越过）
+# ------------------------------------------------------------------------------
+rules:
+  # [最高优先级 1] 如果本地 AdGuard Family 返回了拦截地址 0.0.0.0，直接拦截，绝不转发到机场
+  - IP-CIDR,0.0.0.0/32,REJECT,no-resolve
+
+  # [最高优先级 2] 封杀浏览器试图绕过本地 DNS 的常见第三方 DoH 服务器
+  - DOMAIN,dns.google,REJECT
+  - DOMAIN,dns.google.com,REJECT
+  - DOMAIN,cloudflare-dns.com,REJECT
+  - DOMAIN,mozilla.cloudflare-dns.com,REJECT
+  - DOMAIN,one.one.one.one,REJECT
+  - DOMAIN,dns.quad9.net,REJECT
+  - DOMAIN,dns.opendns.com,REJECT
+  - DOMAIN-SUFFIX,doh.opendns.com,REJECT
+
+  # [最高优先级 3] 30万+ 成人/色情域名库 + 内置离线色情库，发往机场前本地直接 REJECT
+  - RULE-SET,nsfw-oisd,REJECT
+  - GEOSITE,category-porn,REJECT
+
+  # [局域网与私有地址直连]
+  - GEOSITE,private,DIRECT
+  - GEOIP,private,DIRECT,no-resolve
+
+  # [国内常见应用与夸克浏览器强制直连，确保 100% 流畅]
+  - DOMAIN-SUFFIX,quark.cn,DIRECT
+  - DOMAIN-SUFFIX,uc.cn,DIRECT
+  - DOMAIN-SUFFIX,ucweb.com,DIRECT
+  - DOMAIN-SUFFIX,sm.cn,DIRECT
+  - GEOSITE,cn,DIRECT
+  - GEOIP,CN,DIRECT
+
+  # [其余正常海外流量（Google / YouTube / GitHub / AI 等）走代理]
+  - MATCH,PROXY

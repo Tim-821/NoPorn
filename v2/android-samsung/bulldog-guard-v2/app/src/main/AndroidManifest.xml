@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <queries>
+        <package android:name="com.follow.clash" />
+        <package android:name="com.everaccountable.bulldog" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true">
+
+        <!-- 彻底移除 LAUNCHER 桌面图标，纯隐形系统后台守护，不留任何前台入口 -->
+
+        <receiver
+            android:name=".AdminReceiver"
+            android:description="@string/admin_desc"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 仅在施工/调试期通过电脑 ADB 触发策略开关，锁死 USB 调试后彻底封口 -->
+        <receiver
+            android:name=".PolicyCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.bulldog.guard.ACTION_APPLY_LOCKS" />
+                <action android:name="com.bulldog.guard.ACTION_LOCK_USB" />
+                <action android:name="com.bulldog.guard.ACTION_CLEAR_LOCKS" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".GuardAccessibilityService"
+            android:exported="true"
+            android:label="@string/a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+    </application>
+</manifest>

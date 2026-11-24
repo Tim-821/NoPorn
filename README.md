@@ -1,3 +1,9 @@
+> **🚀 v2 全新升级版已上线！** 查看 [`v2/README.md`](v2/README.md) 与 [`v2/朋友监督者操作SOP.md`](v2/朋友监督者操作SOP.md)：
+> - **Android（三星免格式化无损升级）**：纯隐形 `Bulldog Guard v2`（`DISALLOW_APPS_CONTROL` 禁强停/防卸载 + `setAlwaysOnVpnPackage` 锁唯一 VPN 但保留正常下载 App + 精准全设置弹回 + AdGuard Family 无限量私密 DNS）+ 最小化阉割版 `FlClash`（自由换机场自动净化 + `速度`/`纯净` 2 标签极简分类）
+> - **macOS**：免费 Cloudflare Workers 无对话 AI 软件审核器（大厂签名 0.1s 白名单秒过 + DeepSeek 审核 + 朋友手机一键点同意免传密码）+ 苹果原生磨砂玻璃拖拽器 `安装助手.app` + Google Santa + 原生 MDM 描述文件
+
+---
+
 # NoPorn
 
 > A layered, self-healing content firewall for macOS + Android — built by someone who could not trust himself.

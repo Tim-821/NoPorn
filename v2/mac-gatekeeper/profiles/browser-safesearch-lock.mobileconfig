@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<!-- 1. 系统级加密 DNS（AdGuard Family DoH），在未开代理直连时强制兜底 -->
+		<dict>
+			<key>DNSSettings</key>
+			<dict>
+				<key>DNSProtocol</key>
+				<string>HTTPS</string>
+				<key>ServerURL</key>
+				<string>https://family.adguard-dns.com/dns-query</string>
+				<key>ServerAddresses</key>
+				<array>
+					<string>94.140.14.15</string>
+					<string>94.140.15.16</string>
+				</array>
+			</dict>
+			<key>PayloadDescription</key>
+			<string>强制系统使用 AdGuard Family 加密 DNS（成人拦截 + 安全搜索）</string>
+			<key>PayloadDisplayName</key>
+			<string>AdGuard Family DNS</string>
+			<key>PayloadIdentifier</key>
+			<string>com.guard.system.dns.adguard</string>
+			<key>PayloadType</key>
+			<string>com.apple.dnsSettings.managed</string>
+			<key>PayloadUUID</key>
+			<string>E1A2B3C4-1111-4A11-9000-000000000001</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+
+		<!-- 2. Chrome 托管策略：强制 SafeSearch、禁用自定义 DoH、禁用隐身模式 -->
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.google.Chrome</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>ForceGoogleSafeSearch</key>
+								<true/>
+								<key>ForceYouTubeRestrict</key>
+								<integer>1</integer>
+								<key>IncognitoModeAvailability</key>
+								<integer>1</integer>
+								<key>DnsOverHttpsMode</key>
+								<string>off</string>
+								<key>BrowserGuestModeEnabled</key>
+								<false/>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Chrome 安全搜索与防绕过策略</string>
+			<key>PayloadIdentifier</key>
+			<string>com.guard.system.chrome.policy</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>E1A2B3C4-2222-4A22-9000-000000000002</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+
+		<!-- 3. Microsoft Edge 托管策略：强制 SafeSearch、禁用自定义 DoH、禁用 InPrivate -->
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.microsoft.Edge</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>ForceGoogleSafeSearch</key>
+								<true/>
+								<key>ForceBingSafeSearch</key>
+								<integer>2</integer>
+								<key>ForceYouTubeRestrict</key>
+								<integer>1</integer>
+								<key>InPrivateModeAvailability</key>
+								<integer>1</integer>
+								<key>DnsOverHttpsMode</key>
+								<string>off</string>
+								<key>BrowserGuestModeEnabled</key>
+								<false/>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Edge 安全搜索与防绕过策略</string>
+			<key>PayloadIdentifier</key>
+			<string>com.guard.system.edge.policy</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>E1A2B3C4-3333-4A33-9000-000000000003</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>强制浏览器开启安全搜索、禁用浏览器自带 DoH 绕过，并配置 AdGuard Family DNS。</string>
+	<key>PayloadDisplayName</key>
+	<string>Guard System - 浏览器与DNS安全锁</string>
+	<key>PayloadIdentifier</key>
+	<string>com.guard.system.profile.main</string>
+	<key>PayloadOrganization</key>
+	<string>Personal Guard</string>
+	<key>PayloadRemovalDisallowed</key>
+	<true/>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>E1A2B3C4-0000-4A00-9000-000000000000</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

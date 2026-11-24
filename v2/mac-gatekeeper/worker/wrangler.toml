@@ -1,0 +1,9 @@
+name = "guard-gatekeeper"
+main = "worker.js"
+compatibility_date = "2025-10-01"
+
+# 施工时先执行: npx wrangler kv namespace create APPROVAL_KV
+# 然后把返回的 id 填到下面：
+[[kv_namespaces]]
+binding = "APPROVAL_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
